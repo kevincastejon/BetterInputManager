@@ -143,6 +143,8 @@ namespace BetterInputManager
         internal static string Open(string title, InputModalOptions options)
         {
             InputModal window = CreateInstance<InputModal>();
+            window.minSize = new Vector2(200f, 75f);
+            window.maxSize = new Vector2(200f, 75f);
             window.CenterOnMainWin();
             window.titleContent = new GUIContent(title);
             window.Init(options);

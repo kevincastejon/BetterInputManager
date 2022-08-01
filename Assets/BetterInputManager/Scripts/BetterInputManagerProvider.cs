@@ -132,7 +132,7 @@ namespace BetterInputManager
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("+"))
             {
-                string newName = InputModal.Open("Enter a name for the new axis", new InputModalOptions() { Placeholder = "New axis name" });
+                string newName = InputModal.Open("New axis creation", new InputModalOptions() { Description="Enter a name for the new axis", Placeholder = "New axis name" });
                 if (newName != null && newName != string.Empty)
                 {
                     int insertIndex = _list.index == -1 ? 0 : _list.index;
@@ -182,7 +182,6 @@ namespace BetterInputManager
             }
             GUILayout.EndHorizontal();
             ResizeScrollView();
-            GUILayout.Space(10f);
         }
 
         private void DisplayParams()

@@ -258,8 +258,8 @@ namespace BetterInputManager
         internal static string Open(string keyName)
         {
             PickButtonModal window = CreateInstance<PickButtonModal>();
-            window.minSize = new Vector2(300,135);
-            window.maxSize = new Vector2(300,135);
+            window.minSize = new Vector2(300f, 135f);
+            window.maxSize = new Vector2(300f, 135f);
             window.CenterOnMainWin();
             window.titleContent = new GUIContent("Pick a button");
             window.Init(keyName);
