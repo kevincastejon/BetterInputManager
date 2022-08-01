@@ -34,9 +34,9 @@ namespace BetterInputManager
 
         private void OnEnable()
         {
-            _gamepadIcon = EditorGUIUtility.Load("Assets/BetterInputManager/Icons/GamePadIcon.png") as Texture2D;
-            _keyboardIcon = EditorGUIUtility.Load("Assets/BetterInputManager/Icons/KeyboardIcon.png") as Texture2D;
-            _mouseIcon = EditorGUIUtility.Load("Assets/BetterInputManager/Icons/MouseIcon.png") as Texture2D;
+            _gamepadIcon = EditorGUIUtility.Load("Assets/KevinCastejon/BetterInputManager/Icons/GamePadIcon.png") as Texture2D;
+            _keyboardIcon = EditorGUIUtility.Load("Assets/KevinCastejon/BetterInputManager/Icons/KeyboardIcon.png") as Texture2D;
+            _mouseIcon = EditorGUIUtility.Load("Assets/KevinCastejon/BetterInputManager/Icons/MouseIcon.png") as Texture2D;
         }
 
         internal void Init(string keyName)

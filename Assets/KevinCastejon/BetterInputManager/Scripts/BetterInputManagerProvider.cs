@@ -35,9 +35,9 @@ namespace BetterInputManager
 
         public override void OnActivate(string searchContext, VisualElement rootElement)
         {
-            _gamepadIcon = EditorGUIUtility.Load("Assets/BetterInputManager/Icons/GamePadIconMargin.png") as Texture2D;
-            _keyboardIcon = EditorGUIUtility.Load("Assets/BetterInputManager/Icons/KeyboardIconMargin.png") as Texture2D;
-            _mouseIcon = EditorGUIUtility.Load("Assets/BetterInputManager/Icons/MouseIconMargin.png") as Texture2D;
+            _gamepadIcon = EditorGUIUtility.Load("Assets/KevinCastejon/BetterInputManager/Icons/GamePadIconMargin.png") as Texture2D;
+            _keyboardIcon = EditorGUIUtility.Load("Assets/KevinCastejon/BetterInputManager/Icons/KeyboardIconMargin.png") as Texture2D;
+            _mouseIcon = EditorGUIUtility.Load("Assets/KevinCastejon/BetterInputManager/Icons/MouseIconMargin.png") as Texture2D;
             _currentScrollViewHeight = new float[] { 300f,300f,300f };
             _inputManager = new SerializedObject(AssetDatabase.LoadAssetAtPath<Object>("ProjectSettings/InputManager.asset"));
             _axes = _inputManager.FindProperty("m_Axes");
