@@ -6,8 +6,8 @@ No more button names to guess, no more non-sense parameters, you directly know w
 
 ## Tutorial
 
-![preview](https://kevincastejon.github.io/BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto1.png)
-![preview](https://kevincastejon.github.io/BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto2.png)
-![preview](https://kevincastejon.github.io/BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto3.png)
-![preview](https://kevincastejon.github.io/BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto4.png)
-![preview](https://kevincastejon.github.io/BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto5.png)
+![preview](https://kevincastejon.github.io/Unity-BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto1.png)
+![preview](https://kevincastejon.github.io/Unity-BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto2.png)
+![preview](https://kevincastejon.github.io/Unity-BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto3.png)
+![preview](https://kevincastejon.github.io/Unity-BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto4.png)
+![preview](https://kevincastejon.github.io/Unity-BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto5.png)
