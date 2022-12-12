@@ -1,5 +1,4 @@
 # BetterInputManager
-## Makes the same old InputManager way better
 
 This package offers a comprehensive, straight-forward interface for the old **InputManager**.
 
@@ -9,7 +8,13 @@ No more button names to guess, no more non-sense parameters, you directly know w
 
 [Get the Unity package](https://github.com/kevincastejon/Unity-BetterInputManager/releases/tag/v1.0)
 
-## Tutorial
+## Features list :
+
+- Separated lists for each axis type
+- Filtered out parameters
+- Intuitive button picking
+- No more name guessing
+- Smoothing parameters regrouped in a collapsible way
 
 ![preview](https://kevincastejon.github.io/Unity-BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto1.png)
 ![preview](https://kevincastejon.github.io/Unity-BetterInputManager/Assets/KevinCastejon/BetterInputManager/Documentation/Tuto2.png)
