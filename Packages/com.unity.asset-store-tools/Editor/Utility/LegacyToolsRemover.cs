@@ -6,15 +6,15 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-namespace AssetStoreTools
+namespace AssetStoreTools.Utility
 {
     [InitializeOnLoad]
-    public class LegacyToolsRemover
+    internal class LegacyToolsRemover
     {
-        private const string MessagePart1 = "A legacy version of the Asset Store Tools " +
+        private const string MessagePart1 = "A legacy version of Asset Store Tools " +
             "was detected at the following path:\n";
-        private const string MessagePart2 = "\n\nWould you like it to be removed?";
-        private const string SessionKey = "ASTLegacyToolsRemoverActive";
+        private const string MessagePart2 = "\n\nHaving both the legacy and the latest version installed at the same time is not supported " +
+            "and might prevent the latest version from functioning properly.\n\nWould you like the legacy version to be removed automatically?";
 
         static LegacyToolsRemover()
         {
@@ -30,27 +30,25 @@ namespace AssetStoreTools
 
         private static void CheckAndRemoveLegacyTools()
         {
-            if (PlayerPrefs.GetInt(SessionKey, 1) == 0 || !ProjectContainsLegacyTools(out string path))
+            if (!ASToolsPreferences.Instance.LegacyVersionCheck || !ProjectContainsLegacyTools(out string path))
                 return;
 
             var relativePath = path.Substring(Application.dataPath.Length - "Assets".Length).Replace("\\", "/");
-            var result = EditorUtility.DisplayDialogComplex("Asset Store Tools", MessagePart1 + relativePath + MessagePart2, "Yes", "No", "No and do not display this again");
-            
+            var result = EditorUtility.DisplayDialog("Asset Store Tools", MessagePart1 + relativePath + MessagePart2, "Yes", "No");
+
             // If "No" - do nothing
-            if (result == 1)
+            if (!result)
                 return;
 
             // If "Yes" - remove legacy tools
-            if (result == 0)
-            {
-                File.Delete(path);
-                File.Delete(path + ".meta");
-                RemoveEmptyFolders(Path.GetDirectoryName(path).Replace("\\", "/"));
-                AssetDatabase.Refresh();
-            }
+            File.Delete(path);
+            File.Delete(path + ".meta");
+            RemoveEmptyFolders(Path.GetDirectoryName(path)?.Replace("\\", "/"));
+            AssetDatabase.Refresh();
 
-            // If "Yes" or "No and do not show again" - prevent future execution
-            PlayerPrefs.SetInt(SessionKey, 0);
+            // We could also optionally prevent future execution here
+            // but the ProjectContainsLegacyTools() function runs in less
+            // than a milisecond on an empty project
         }
 
         private static bool ProjectContainsLegacyTools(out string path)

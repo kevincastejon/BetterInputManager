@@ -10,13 +10,21 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d813ff809ae82f643bf975031305d541, type: 3}
-  m_Name: 15_RemoveExecutablesAutomatedTest
+  m_Name: 14_RemoveExecutablesAutomatedTest
   m_EditorClassIdentifier: 
   HasBeenInitialized: 1
-  Id: 15
+  Id: 14
   Title: Executable file inclusion
   Description: Your package must not contain an .exe, installer programs or applications.
     If your plugin requires an external program to run, please remove the installer
     program from your package and write the instructions on how to download and install
     the installer program in your documentation.
-  TestMethodName: _15_RemoveExecutableFiles
+  TestMethodName: _14_RemoveExecutableFiles
+  ErrorCategory:
+    Filter: []
+    FilterIsInclusive: 0
+    AppliesToSubCategories: 1
+  WarningCategory:
+    Filter: []
+    FilterIsInclusive: 0
+    AppliesToSubCategories: 1

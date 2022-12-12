@@ -6,7 +6,7 @@ using UnityEngine.UIElements;
 
 namespace AssetStoreTools.Validator
 {
-    public class AssetStoreValidation : AssetStoreToolsWindow
+    internal class AssetStoreValidation : AssetStoreToolsWindow
     {
         protected override string WindowTitle => "Asset Store Validator";
         
@@ -16,6 +16,8 @@ namespace AssetStoreTools.Validator
         private const string LightStylesName = "AssetStoreValidator_Light";
 
         public static Action OnWindowDestroyed;
+        
+        private AutomatedTestsGroup _automatedTestsGroup;
 
         protected override void Init()
         {
@@ -47,8 +49,8 @@ namespace AssetStoreTools.Validator
 
         private void ConstructWindow()
         {
-            var automatedTestsGroup = new AutomatedTestsGroup();
-            rootVisualElement.Add(automatedTestsGroup);
+            _automatedTestsGroup = new AutomatedTestsGroup();
+            rootVisualElement.Add(_automatedTestsGroup);
         }
 
         private void OnDestroy()

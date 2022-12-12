@@ -1,6 +1,7 @@
 using AssetStoreTools.Utility.Json;
 using System;
 using System.Collections.Generic;
+using AssetStoreTools.Utility;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -8,7 +9,7 @@ using UnityEngine.UIElements;
 
 namespace AssetStoreTools.Uploader
 {
-    public class AssetStoreUploader : AssetStoreToolsWindow, IHasCustomMenu
+    internal class AssetStoreUploader : AssetStoreToolsWindow
     {
         public const string MinRequiredPackageVersion = "2020.3";
 
@@ -21,16 +22,10 @@ namespace AssetStoreTools.Uploader
 
         private readonly List<char> _debugBuffer = new List<char>();
 
-        public static bool EnableCustomExporter
-        {
-            get => EditorPrefs.GetBool("ASTCustomExporter", false);
-            set => EditorPrefs.SetBool("ASTCustomExporter", value);
-        }
-
         public static bool ShowPackageVersionDialog
         {
-            get => Application.unityVersion.CompareTo(MinRequiredPackageVersion) == 1 ? false : EditorPrefs.GetBool("ASTPreUploadVersionCheck", true);
-            set => EditorPrefs.SetBool("ASTPreUploadVersionCheck", value);
+            get => string.Compare(Application.unityVersion, MinRequiredPackageVersion, StringComparison.Ordinal) == -1 && ASToolsPreferences.Instance.UploadVersionCheck;
+            set { ASToolsPreferences.Instance.UploadVersionCheck = value;  ASToolsPreferences.Instance.Save(); }
         }
 
         protected override string WindowTitle => "Asset Store Uploader";
@@ -93,26 +88,9 @@ namespace AssetStoreTools.Uploader
             _uploadWindow.SetupWindows(OnLogout, OnPackageDownloadFail);
         }
 
-        public void AddItemsToMenu(GenericMenu menu)
-        {
-            menu.AddItem(new GUIContent("(Experimental) Enable Custom Exporter"), 
-                EnableCustomExporter,
-                () =>
-                {
-                    if (!EnableCustomExporter && !EditorUtility.DisplayDialog("Notice", "Custom exporter is an experimental feature. " +
-                        "It packs selected Assets without using the native Unity API and is observed to be slightly faster.\n\n" +
-                        "Please note that Asset preview images used to showcase specific asset types (Textures, Materials, Prefabs) before importing the package " +
-                        "might not be generated consistently at this time. This does not affect functionality of the package after it gets imported.",
-                        "OK"))
-                        return;
-                    EnableCustomExporter = !EnableCustomExporter;
-                    ASDebug.Log($"Custom exporter set to {EnableCustomExporter}");
-                });
-        }
-
         #region Login Interface
 
-        private void Authenticate()
+        private async void Authenticate()
         {
             ShowLoginWindow();
 
@@ -121,7 +99,13 @@ namespace AssetStoreTools.Uploader
             // 3 - Attempt to login via Cloud session token
             // 4 - Prompt manual login
             EnableLoginWindow(false);
-            AssetStoreAPI.LoginWithSession(OnLoginSuccess, OnLoginFail, OnLoginFailSession);
+            var result = await AssetStoreAPI.LoginWithSessionAsync();
+            if (result.Success)
+                OnLoginSuccess(result.Response);
+            else if (result.SilentFail)
+                OnLoginFailSession();
+            else
+                OnLoginFail(result.Error);
         }
         
         private void OnLoginFail(ASError error)

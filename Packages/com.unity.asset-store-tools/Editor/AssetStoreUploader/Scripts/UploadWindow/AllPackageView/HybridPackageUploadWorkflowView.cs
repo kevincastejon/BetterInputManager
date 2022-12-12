@@ -1,74 +1,41 @@
 ﻿using AssetStoreTools.Utility.Json;
+using AssetStoreTools.Utility;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace AssetStoreTools.Uploader
 {
-    public class HybridPackageUploadWorkflowView : VisualElement
+    internal class HybridPackageUploadWorkflowView : UploadWorkflowView
     {
-        public const string SerializedName = "hybridPackageWorkflow";
-        private const string PackagesLockPath = "Packages/packages-lock.json";
+        public const string WorkflowName = "HybridPackageWorkflow";
+        public const string WorkflowDisplayName = "Local UPM Package";
 
-        private TextField _pathSelectionField;
+        public override string Name => WorkflowName;
+        public override string DisplayName => WorkflowDisplayName;
+
+        private string _category;
+
         private ValidationElement _validationElement;
         private VisualElement _extraPackagesElement;
 
-        // Upload data
-        private List<string> _selectedExportPaths = new List<string>();
-        private string _localPackageGuid;
-        private string _localPackagePath;
-
-        private Action _serializeSelection;
-
-        private HybridPackageUploadWorkflowView(Action serializeSelection)
+        private HybridPackageUploadWorkflowView(string category, Action serializeSelection) : base(serializeSelection)
         {
-            _serializeSelection = serializeSelection;
-            style.display = DisplayStyle.None;
-
+            _category = category;
+            
             SetupWorkflow();
         }
 
-        public static HybridPackageUploadWorkflowView Create(Action serializeAction)
+        public static HybridPackageUploadWorkflowView Create(string category, Action serializeAction)
         {
-            return Create(serializeAction, default(JsonValue));
+            return new HybridPackageUploadWorkflowView(category, serializeAction);
         }
 
-        public static HybridPackageUploadWorkflowView Create(Action serializeAction, JsonValue serializedValues)
-        {
-            try
-            {
-                var newInstance = new HybridPackageUploadWorkflowView(serializeAction);
-                if (!serializedValues.Equals(default(JsonValue)) && serializedValues.ContainsKey(SerializedName))
-                    newInstance.LoadSerializedWorkflow(serializedValues[SerializedName]);
-                return newInstance;
-            }
-            catch
-            {
-                ASDebug.LogError("Failed to load serialized values for a new Hybrid Package Upload Workflow. Returning a default one");
-                return new HybridPackageUploadWorkflowView(serializeAction);
-            }
-        }
-
-        public string[] GetSelectedExportPaths()
-        {
-            return _selectedExportPaths.ToArray();
-        }
-
-        public string GetLocalPackageGuid()
-        {
-            return _localPackageGuid;
-        }
-
-        public string GetLocalPackagePath()
-        {
-            return _localPackagePath;
-        }
-
-        private void SetupWorkflow()
+        protected sealed override void SetupWorkflow()
         {
             // Path selection
             VisualElement folderPathSelectionRow = new VisualElement();
@@ -86,52 +53,75 @@ namespace AssetStoreTools.Uploader
             labelHelpRow.Add(folderPathLabel);
             labelHelpRow.Add(folderPathLabelTooltip);
 
-            _pathSelectionField = new TextField();
-            _pathSelectionField.AddToClassList("path-selection-field");
-            _pathSelectionField.isReadOnly = true;
+            PathSelectionField = new TextField();
+            PathSelectionField.AddToClassList("path-selection-field");
+            PathSelectionField.isReadOnly = true;
 
             Button browsePathButton = new Button(BrowsePath) { name = "BrowsePathButton", text = "Browse" };
             browsePathButton.AddToClassList("browse-button");
 
             folderPathSelectionRow.Add(labelHelpRow);
-            folderPathSelectionRow.Add(_pathSelectionField);
+            folderPathSelectionRow.Add(PathSelectionField);
             folderPathSelectionRow.Add(browsePathButton);
 
             Add(folderPathSelectionRow);
 
             _validationElement = new ValidationElement();
             Add(_validationElement);
+            
+            _validationElement.SetCategory(_category);
         }
 
-        private void LoadSerializedWorkflow(JsonValue json)
+        public override void LoadSerializedWorkflow(JsonValue json, string lastUploadedPath, string lastUploadedGuid)
         {
-            var paths = json["paths"].AsList();
-
-            if (paths.Count == 0)
+            if(!DeserializeMainExportPath(json, out string mainExportPath) || !Directory.Exists(mainExportPath))
+            {
+                ASDebug.Log("Unable to restore Hybrid Package workflow paths from local cache");
+                LoadSerializedWorkflowFallback(lastUploadedGuid, lastUploadedGuid);
                 return;
+            }
 
-            // Serialized path will be in ADB form, so we need to reconstruct it first
+            DeserializeExtraExportPaths(json, out List<string> extraExportPaths);
+
+            ASDebug.Log($"Restoring serialized Hybrid Package workflow values from local cache");
+            LoadSerializedWorkflow(mainExportPath, extraExportPaths);
+        }
+
+        public override void LoadSerializedWorkflowFallback(string lastUploadedPath, string lastUploadedGuid)
+        {
+            var mainExportPath = AssetDatabase.GUIDToAssetPath(lastUploadedGuid);
+            if (string.IsNullOrEmpty(mainExportPath))
+                mainExportPath = lastUploadedPath;
+            
+            if (!mainExportPath.StartsWith("Packages/") || !Directory.Exists(mainExportPath))
+            {
+                ASDebug.Log("Unable to restore Hybrid Package workflow paths from previous upload values");
+                return;
+            }
+
+            ASDebug.Log($"Restoring serialized Hybrid Package workflow values from previous upload values");
+            LoadSerializedWorkflow(mainExportPath, null);
+        }
+
+        private void LoadSerializedWorkflow(string relativeAssetDatabasePath, List<string> extraExportPaths)
+        {
+            // Expected path is in ADB form, so we need to reconstruct it first
             var rootProjectPath = Application.dataPath.Substring(0, Application.dataPath.Length - "Assets".Length);
-            var realPath = Path.GetFullPath(paths[0].AsString()).Replace('\\', '/');
+            var realPath = Path.GetFullPath(relativeAssetDatabasePath).Replace('\\', '/');
             if (realPath.StartsWith(rootProjectPath))
                 realPath = realPath.Substring(rootProjectPath.Length);
 
-            // Do not restore any serialized values if the main package is no longer valid/exists
-            if (!IsValidLocalPackage(realPath, out string relativeAssetDatabasePath))
+            if (!IsValidLocalPackage(realPath, out relativeAssetDatabasePath))
+            {
+                ASDebug.Log("Unable to restore Hybrid Package workflow path - package is not a valid UPM package");
                 return;
+            }
 
-            // Get a list of which toggles will need to be enabled
-            var serializedValues = new List<string>();
-            for (int i = 1; i < paths.Count; i++)
-                serializedValues.Add(paths[i].AsString());
-
-            // Treat this as a manual selection but with serialized toggle values
-            HandleHybridUploadPathSelection(realPath, relativeAssetDatabasePath, serializedValues);
-
-            ASDebug.Log($"Loaded serialized Hybrid Package Flow values with {_selectedExportPaths.Count} paths");
+            // Treat this as a manual selection
+            HandleHybridUploadPathSelection(realPath, relativeAssetDatabasePath, extraExportPaths, false);
         }
 
-        private void BrowsePath()
+        protected override void BrowsePath()
         {
             // Path retrieval
             string relativeExportPath = string.Empty;
@@ -152,20 +142,22 @@ namespace AssetStoreTools.Uploader
                 return;
             }
 
-            HandleHybridUploadPathSelection(workingPath, relativeAssetDatabasePath, null);
+            HandleHybridUploadPathSelection(workingPath, relativeAssetDatabasePath, null, true);
         }
 
-        private void HandleHybridUploadPathSelection(string relativeExportPath, string relativeAssetDatabasePath, List<string> serializedToggles)
+        private void HandleHybridUploadPathSelection(string relativeExportPath, string relativeAssetDatabasePath, List<string> serializedToggles, bool serializeValues)
         {
-            _pathSelectionField.value = relativeExportPath + "/";
+            PathSelectionField.value = relativeExportPath + "/";
 
             // Reset and reinitialize the selected export path(s) array
-            _selectedExportPaths = new List<string> { relativeAssetDatabasePath };
+            MainExportPath = relativeAssetDatabasePath;
+            ExtraExportPaths = new List<string>();
 
             // Set additional upload data for the Publisher Portal backend (GUID and Package Path).
             // The backend workflow currently accepts only 1 package guid and path, so we'll use the main folder data
-            _localPackageGuid = AssetDatabase.AssetPathToGUID(relativeAssetDatabasePath);
-            _localPackagePath = relativeAssetDatabasePath.Substring("Packages".Length);
+            LocalPackageGuid = AssetDatabase.AssetPathToGUID(relativeAssetDatabasePath);
+            LocalPackagePath = relativeAssetDatabasePath;
+            LocalProjectPath = relativeAssetDatabasePath;
 
             _validationElement.SetLocalPath(relativeAssetDatabasePath);
 
@@ -178,26 +170,25 @@ namespace AssetStoreTools.Uploader
             }
 
             List<string> pathsToAdd = new List<string>();
-            foreach (var package in GetAllLocalPackages())
+            foreach (var package in PackageUtility.GetAllLocalPackages())
             {
                 // Exclude the Asset Store Tools themselves
-                if (package.Get("name") == "com.unity.asset-store-tools")
+                if (package.name == "com.unity.asset-store-tools")
                     continue;
 
-                var localPackagePath = package.Get("path_absolute");
+                var localPackagePath = package.GetConvenientPath();
 
                 if (localPackagePath == relativeExportPath)
                     continue;
 
-                pathsToAdd.Add(package.Get("path_assetdb"));
+                pathsToAdd.Add(package.assetPath);
             }
 
             if (pathsToAdd.Count != 0)
                 PopulateExtraPathsBox(pathsToAdd, serializedToggles);
 
-            // Only serialize current selection when no serialized toggles were passed
-            if (serializedToggles == null)
-                _serializeSelection?.Invoke();
+            if (serializeValues)
+                SerializeSelection?.Invoke();
         }
 
         private void PopulateExtraPathsBox(List<string> otherPackagesFound, List<string> checkedToggles)
@@ -234,7 +225,7 @@ namespace AssetStoreTools.Uploader
                 if (checkedToggles != null && checkedToggles.Contains(toggle.text))
                 {
                     toggle.SetValueWithoutNotify(true);
-                    _selectedExportPaths.Add(toggle.text);
+                    ExtraExportPaths.Add(toggle.text);
                 }
 
                 toggle.RegisterCallback(toggleChangeCallback, toggle.text);
@@ -248,15 +239,15 @@ namespace AssetStoreTools.Uploader
         {
             switch (evt.newValue)
             {
-                case true when !_selectedExportPaths.Contains(folderPath):
-                    _selectedExportPaths.Add(folderPath);
+                case true when !ExtraExportPaths.Contains(folderPath):
+                    ExtraExportPaths.Add(folderPath);
                     break;
-                case false when _selectedExportPaths.Contains(folderPath):
-                    _selectedExportPaths.Remove(folderPath);
+                case false when ExtraExportPaths.Contains(folderPath):
+                    ExtraExportPaths.Remove(folderPath);
                     break;
             }
 
-            _serializeSelection?.Invoke();
+            SerializeSelection?.Invoke();
         }
 
         private bool IsValidLocalPackage(string packageFolderPath, out string assetDatabasePackagePath)
@@ -269,19 +260,19 @@ namespace AssetStoreTools.Uploader
                 return false;
             try
             {
-                var localPackages = GetAllLocalPackages();
+                var localPackages = PackageUtility.GetAllLocalPackages();
 
-                if (localPackages == null || localPackages.Count == 0)
+                if (localPackages == null || localPackages.Length == 0)
                     return false;
 
                 foreach (var package in localPackages)
                 {
-                    var localPackagePath = package.Get("path_absolute").AsString();
+                    var localPackagePath = package.GetConvenientPath();
 
                     if (localPackagePath != packageFolderPath)
                         continue;
 
-                    assetDatabasePackagePath = package.Get("path_assetdb").AsString();
+                    assetDatabasePackagePath = package.assetPath;
                     return true;
                 }
             }
@@ -293,116 +284,11 @@ namespace AssetStoreTools.Uploader
             return false;
         }
 
-        private List<JsonValue> GetAllLocalPackages()
+        public override async Task<PackageExporter.ExportResult> ExportPackage(string packageName, bool _)
         {
-            try
-            {
-                if (File.Exists(PackagesLockPath))
-                    return CollectPackagesFromPackagesLock();
-
-                // Fallback for earlier versions of 2019.4 which do not have packages-lock.json
-                return CollectPackagesManual();
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private List<JsonValue> CollectPackagesFromPackagesLock()
-        {
-            string packageLockJsonString = File.ReadAllText(PackagesLockPath);
-            JSONParser parser = new JSONParser(packageLockJsonString);
-            var packageLockJson = parser.Parse();
-
-            var packages = packageLockJson.Get("dependencies").AsDict();
-            var localPackages = new List<JsonValue>();
-
-            foreach (var kvp in packages)
-            {
-                var packageSource = kvp.Value.Get("source").AsString();
-
-                if (!packageSource.Equals("embedded") && !packageSource.Equals("local"))
-                    continue;
-
-                var packagePath = kvp.Value.Get("version").AsString().Substring("file:".Length);
-
-                if (packageSource.Equals("embedded"))
-                    packagePath = $"Packages/{packagePath}";
-                else if (packageSource.Equals("local") && packagePath.StartsWith("../"))
-                    packagePath = packagePath.Substring("../".Length);
-
-                JsonValue localPackage = new JsonValue
-                {
-                    ["name"] = JsonValue.NewString(kvp.Key),
-                    ["source"] = JsonValue.NewString(kvp.Value.Get("source")),
-                    ["path_absolute"] = JsonValue.NewString(packagePath),
-                    ["path_assetdb"] = JsonValue.NewString($"Packages/{kvp.Key}")
-                };
-
-                localPackages.Add(localPackage);
-            }
-
-            return localPackages;
-        }
-
-        private List<JsonValue> CollectPackagesManual()
-        {
-            // Scrape manifest.json for local packages
-            string manifestJsonString = File.ReadAllText("Packages/manifest.json");
-            JSONParser parser = new JSONParser(manifestJsonString);
-            var manifestJson = parser.Parse();
-
-            var packages = manifestJson.Get("dependencies").AsDict();
-            var localPackages = new List<JsonValue>();
-
-            foreach (var kvp in packages)
-            {
-                if (!kvp.Value.AsString().StartsWith("file:"))
-                    continue;
-
-                var packagePath = kvp.Value.AsString().Substring("file:".Length);
-                if (packagePath.StartsWith("../"))
-                    packagePath = packagePath.Substring("../".Length);
-
-                JsonValue localPackage = new JsonValue
-                {
-                    ["name"] = JsonValue.NewString(kvp.Key),
-                    ["source"] = JsonValue.NewString("local"),
-                    ["path_absolute"] = JsonValue.NewString(packagePath),
-                    ["path_assetdb"] = JsonValue.NewString($"Packages/{kvp.Key}")
-                };
-
-                localPackages.Add(localPackage);
-            }
-
-            // Scrape Packages folder for embedded packages
-            foreach (var directory in Directory.GetDirectories("Packages"))
-            {
-                var path = directory.Replace("\\", "/");
-                var packageManifestPath = $"{path}/package.json";
-
-                if (!File.Exists(packageManifestPath))
-                    continue;
-
-                string packageManifestJsonString = File.ReadAllText(packageManifestPath);
-                parser = new JSONParser(packageManifestJsonString);
-                var packageManifestJson = parser.Parse();
-
-                var packageName = packageManifestJson["name"].AsString();
-
-                JsonValue embeddedPackage = new JsonValue()
-                {
-                    ["name"] = JsonValue.NewString(packageName),
-                    ["source"] = JsonValue.NewString("embedded"),
-                    ["path_absolute"] = JsonValue.NewString(path),
-                    ["path_assetdb"] = JsonValue.NewString($"Packages/{packageName}")
-                };
-
-                localPackages.Add(embeddedPackage);
-            }
-
-            return localPackages;
+            var paths = GetAllExportPaths();
+            var outputPath = $"Temp/{packageName}-{DateTime.Now:yyyy-dd-M--HH-mm-ss}.unitypackage";
+            return await PackageExporter.ExportPackage(paths, outputPath, false, false, false);
         }
     }
 }

@@ -8,10 +8,12 @@ using System.Diagnostics;
 using System.Threading;
 using System.Reflection;
 using System.Threading.Tasks;
+using AssetStoreTools.Utility;
+using AssetStoreTools.Utility.Json;
 
 namespace AssetStoreTools.Uploader
 {
-    public static class PackageExporter
+    internal static class PackageExporter
     {
         private const string ExportMethodWithoutDependencies = "UnityEditor.PackageUtility.ExportPackage";
         private const string ExportMethodWithDependencies = "UnityEditor.PackageUtility.ExportPackageAndPackageManagerManifest";
@@ -22,15 +24,26 @@ namespace AssetStoreTools.Uploader
         private const string ProgressBarStep3 = "Compressing package...";
 
         private const string TemporaryExportPathName = "CustomExport";
+        private const string PackagesLockPath = "Packages/packages-lock.json";
+        private const string ManifestJsonPath = "Packages/manifest.json";
+        
+        internal class ExportResult
+        {
+            public bool Success;
+            public string ExportedPath;
+            public ASError Error;
 
-        public static async void ExportPackage(string[] exportPaths, string outputFilename,
-            bool includeDependencies, bool isCompleteProject, Action onSuccess, Action<ASError> onFail, bool useCustomExporter = false)
+            public static implicit operator bool(ExportResult value)
+            {
+                return value != null && value.Success;
+            }
+        }
+
+        public static async Task<ExportResult> ExportPackage(string[] exportPaths, string outputFilename,
+            bool includeDependencies, bool isCompleteProject, bool useLegacyExporter = false, string[] dependencies = null)
         {
             if (exportPaths == null || exportPaths.Length == 0)
-            {
-                onFail?.Invoke(ASError.GetGenericError(new ArgumentException("PackageExporter received an invalid export paths array")));
-                return;
-            }
+                return new ExportResult() { Success = false, Error = ASError.GetGenericError(new ArgumentException("Package Exporting failed: received an invalid export paths array")) };
 
             EditorUtility.DisplayProgressBar(ProgressBarTitle, ProgressBarStep1, 0.1f);
             AssetDatabase.SaveAssets();
@@ -40,18 +53,17 @@ namespace AssetStoreTools.Uploader
 
             try
             {
-                if (!useCustomExporter)
+                if (useLegacyExporter)
                     await ExportPackageNative(exportPaths, outputFilename, includeDependencies);
                 else
-                    ExportPackageCustom(exportPaths, outputFilename, includeDependencies);
+                    ExportPackageCustom(exportPaths, outputFilename, includeDependencies, dependencies);
 
                 ASDebug.Log($"Package file has been created at {outputFilename}");
-
-                onSuccess?.Invoke();
+                return new ExportResult() { Success = true, ExportedPath = outputFilename };
             }
             catch (Exception e)
             {
-                onFail?.Invoke(ASError.GetGenericError(e));
+                return new ExportResult() { Success = false, Error = ASError.GetGenericError(e) };
             }
             finally
             {
@@ -67,10 +79,13 @@ namespace AssetStoreTools.Uploader
             return updatedExportPaths;
         }
 
-        private async static Task ExportPackageNative(string[] exportPaths, string outputFilename, bool includeDependencies)
+        private static async Task ExportPackageNative(string[] exportPaths, string outputFilename, bool includeDependencies)
         {
             ASDebug.Log("Using native package exporter");
-            var guids = GetGuids(exportPaths);
+            var guids = GetGuids(exportPaths, out bool onlyFolders);
+
+            if (guids.Length == 0 || onlyFolders)
+                throw new ArgumentException("Package Exporting failed: provided export paths are empty or only contain empty folders");
 
             string exportMethod = ExportMethodWithoutDependencies;
             if (includeDependencies)
@@ -87,7 +102,7 @@ namespace AssetStoreTools.Uploader
 
             ASDebug.Log("Invoking native export method");
 
-            method.Invoke(null, new object[] { guids, outputFilename });
+            method?.Invoke(null, new object[] { guids, outputFilename });
 
             // The internal exporter methods are asynchronous, therefore
             // we need to wait for exporting to finish before returning
@@ -98,9 +113,10 @@ namespace AssetStoreTools.Uploader
             });
         }
 
-        private static string[] GetGuids(string[] exportPaths)
+        private static string[] GetGuids(string[] exportPaths, out bool onlyFolders)
         {
             var guids = new List<string>();
+            onlyFolders = true;
 
             foreach (var exportPath in exportPaths)
             {
@@ -108,11 +124,13 @@ namespace AssetStoreTools.Uploader
 
                 foreach (var assetPath in assetPaths)
                 {
-                    var guid = GetAssetGuid(assetPath);
+                    var guid = GetAssetGuid(assetPath, false);
                     if (string.IsNullOrEmpty(guid))
                         continue;
 
                     guids.Add(guid);
+                    if (onlyFolders == true && (File.Exists(assetPath)))
+                        onlyFolders = false;
                 }
             }
 
@@ -140,7 +158,7 @@ namespace AssetStoreTools.Uploader
             return paths.ToArray();
         }
 
-        private static string GetAssetGuid(string assetPath)
+        private static string GetAssetGuid(string assetPath, bool hiddenSearch)
         {
             // Skip meta files as they do not have guids
             if (assetPath.EndsWith(".meta"))
@@ -151,23 +169,28 @@ namespace AssetStoreTools.Uploader
             if (guid != string.Empty)
                 return guid;
 
-            // If guid was not retrieved, it's possible that the file is within a hidden folder (e.g Samples~).
-            // We'll need to read its meta file to retrieve the guid
-            // To-do: handle hidden folders without meta files
-            var metaPath = $"{assetPath}.meta";
-
-            if (!File.Exists(metaPath))
-                return string.Empty;
-
-            using (StreamReader reader = new StreamReader(metaPath))
+            // Files in hidden folders (e.g. Samples~) are not part of the Asset Database,
+            // therefore GUIDs need to be scraped from the .meta file.
+            // Note: only do this for custom exporter since the native exporter
+            // will not be able to retrieve the asset path from a hidden folder
+            if (hiddenSearch)
             {
-                string line;
-                while ((line = reader.ReadLine()) != string.Empty)
+                // To-do: handle hidden folders without meta files
+                var metaPath = $"{assetPath}.meta";
+
+                if (!File.Exists(metaPath))
+                    return string.Empty;
+
+                using (StreamReader reader = new StreamReader(metaPath))
                 {
-                    if (!line.StartsWith("guid:"))
-                        continue;
-                    var metaGuid = line.Substring("guid:".Length).Trim();
-                    return metaGuid;
+                    string line;
+                    while ((line = reader.ReadLine()) != string.Empty)
+                    {
+                        if (!line.StartsWith("guid:"))
+                            continue;
+                        var metaGuid = line.Substring("guid:".Length).Trim();
+                        return metaGuid;
+                    }
                 }
             }
 
@@ -184,7 +207,7 @@ namespace AssetStoreTools.Uploader
 
         #region Experimental
 
-        public static void ExportPackageCustom(string[] exportPaths, string outputFilename, bool includeDependencies)
+        private static void ExportPackageCustom(string[] exportPaths, string outputFilename, bool includeDependencies, string[] dependencies)
         {
             ASDebug.Log("Using custom package exporter");
             // Create a temporary export path
@@ -193,7 +216,7 @@ namespace AssetStoreTools.Uploader
                 Directory.CreateDirectory(temporaryExportPath);
 
             // Construct an unzipped package structure
-            CreateTempPackageStructure(exportPaths, temporaryExportPath, includeDependencies);
+            CreateTempPackageStructure(exportPaths, temporaryExportPath, includeDependencies, dependencies);
 
             // Build a .unitypackage file from the temporary folder
             CreateUnityPackage(temporaryExportPath, outputFilename);
@@ -206,7 +229,7 @@ namespace AssetStoreTools.Uploader
             return $"{AssetStoreCache.TempCachePath}/{TemporaryExportPathName}";
         }
 
-        private static void CreateTempPackageStructure(string[] exportPaths, string tempOutputPath, bool includeDependencies)
+        private static void CreateTempPackageStructure(string[] exportPaths, string tempOutputPath, bool includeDependencies, string[] dependencies)
         {
             EditorUtility.DisplayProgressBar(ProgressBarTitle, ProgressBarStep2, 0.4f);
             var pathGuidPairs = GetPathGuidPairs(exportPaths);
@@ -246,15 +269,39 @@ namespace AssetStoreTools.Uploader
 
             WritePreviewTextures(pathObjectPairs);
 
-            if (!includeDependencies)
+            if (!includeDependencies || dependencies == null || dependencies.Length == 0)
                 return;
 
-            // At this time we only include either all or none of the UPM dependencies.
-            // In the future, we'll be able to allow selective dependencies from the manifest.json
-            // To-do: filter out non-registry packages as these will cause an error when importing the .unitypackage into a project
-            var manifestPath = $"{tempOutputPath}/packagemanagermanifest";
-            Directory.CreateDirectory(manifestPath);
-            File.Copy("Packages/manifest.json", $"{manifestPath}/asset");
+            var manifestJson = GetPackageManifestJson();
+            var allDependenciesDict = manifestJson["dependencies"].AsDict();
+
+            var allLocalPackages = PackageUtility.GetAllLocalPackages();
+            List<string> allPackagesList = new List<string>(allDependenciesDict.Keys);
+            
+            foreach (var package in allPackagesList)
+            {
+                if (!dependencies.Contains(package))
+                {
+                    allDependenciesDict.Remove(package);
+                    continue;
+                }
+
+                if (!allLocalPackages.Select(x => x.name).Contains(package))
+                    continue;
+                
+                allDependenciesDict.Remove(package);
+                UnityEngine.Debug.LogWarning($"Found an unsupported Package Manager dependency: {package}.\n" +
+                                             "This dependency is not supported in the project's manifest.json and will be skipped.");
+            }
+
+            if (allDependenciesDict.Count == 0)
+                return;
+
+            var tempManifestDirectoryPath = $"{tempOutputPath}/packagemanagermanifest";
+            Directory.CreateDirectory(tempManifestDirectoryPath);
+            var tempManifestFilePath = $"{tempManifestDirectoryPath}/asset";
+
+            File.WriteAllText(tempManifestFilePath, manifestJson.ToString());
         }
 
         private static Dictionary<string, string> GetPathGuidPairs(string[] exportPaths)
@@ -267,7 +314,7 @@ namespace AssetStoreTools.Uploader
 
                 foreach (var assetPath in assetPaths)
                 {
-                    var guid = GetAssetGuid(assetPath);
+                    var guid = GetAssetGuid(assetPath, true);
                     if (string.IsNullOrEmpty(guid))
                         continue;
 
@@ -282,28 +329,62 @@ namespace AssetStoreTools.Uploader
         {
             foreach (var kvp in pathObjectPairs)
             {
-                // Texture will likely not be loaded at first, so the first call starts the process.
-                // In 2019.4, textures are loaded on import, but starting with 2020.3
-                // textures are only loaded on demand, so it's expected to take longer
-                AssetPreview.GetAssetPreview(kvp.Value);
+                var obj = kvp.Value;
+                var queuePreview = false;
 
-                // Wait until the texture is no longer loading
-                // IMPORTANT: AssetPreview.IsLoadingPreview currently never returns true in 2020.3 and 2021.3 (Issue 1323729)
-                while (AssetPreview.IsLoadingAssetPreview(kvp.Value.GetInstanceID()))
+                switch (obj)
                 {
-                    // 2019.4: AssetPreview.IsLoadingAssetPreview value only changes after invoking the getter method
-                    if (AssetPreview.GetAssetPreview(kvp.Value))
+                    case Material _:
+                    case TerrainLayer _:
+                    case AudioClip _:
+                    case Mesh _:
+                    case Texture _:
+                    case UnityEngine.Tilemaps.Tile _:
+                    case GameObject _:
+                        queuePreview = true;
                         break;
-                    Thread.Sleep(5);
                 }
 
-                // Texture may have finished loading before being assigned so attempt to retrieve it one more time
-                var tex = AssetPreview.GetAssetPreview(kvp.Value);
-                if (tex != null)
-                    File.WriteAllBytes(kvp.Key + "/preview.png", tex.EncodeToPNG());
+                if (!queuePreview)
+                    continue;
+
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(obj, out var guid, out long _);
+                var preview = GetAssetPreviewFromGuid(guid);
+
+                if (!preview)
+                    continue;
+                
+                var thumbnailWidth = Mathf.Min(preview.width, 128);
+                var thumbnailHeight = Mathf.Min(preview.height, 128);
+                var rt = RenderTexture.GetTemporary(thumbnailWidth, thumbnailHeight, 0, RenderTextureFormat.Default, RenderTextureReadWrite.sRGB);
+                
+                var copy = new Texture2D(rt.width, rt.height, TextureFormat.ARGB32, false);
+                
+                RenderTexture.active = rt;
+                GL.Clear(true, true, new Color(0, 0, 0, 0));
+                Graphics.Blit(preview, rt);
+                copy.ReadPixels(new Rect(0, 0, copy.width, copy.height), 0, 0, false);
+                copy.Apply();
+                RenderTexture.active = null;
+                    
+                var bytes = copy.EncodeToPNG();
+                if (bytes != null && bytes.Length > 0)
+                {
+                    File.WriteAllBytes(kvp.Key + "/preview.png", bytes);
+                }
+                    
+                RenderTexture.ReleaseTemporary(rt);
             }
         }
-
+        
+        private static Texture2D GetAssetPreviewFromGuid(string guid)
+        {
+            var method = typeof(AssetPreview).GetMethod("GetAssetPreviewFromGUID", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(string) }, null);
+            var args = new object[] { guid };
+ 
+            return method?.Invoke(null, args) as Texture2D;
+        }
+        
         private static void CreateUnityPackage(string pathToArchive, string outputPath)
         {
             if (Directory.GetDirectories(pathToArchive).Length == 0)
@@ -381,6 +462,19 @@ namespace AssetStoreTools.Uploader
                 process.WaitForExit();
                 return process.ExitCode;
             }
+        }
+
+        #endregion
+
+        #region Utility
+        
+        private static JsonValue GetPackageManifestJson()
+        {
+            string manifestJsonString = File.ReadAllText(ManifestJsonPath);
+            JSONParser parser = new JSONParser(manifestJsonString);
+            var manifestJson = parser.Parse();
+
+            return manifestJson;
         }
 
         #endregion

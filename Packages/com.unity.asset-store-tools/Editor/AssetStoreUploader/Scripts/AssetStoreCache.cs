@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace AssetStoreTools.Uploader
 {
-    public static class AssetStoreCache
+    internal static class AssetStoreCache
     {
         public const string TempCachePath = "Temp/AssetStoreToolsCache";
         public const string PersistentCachePath = "Library/AssetStoreToolsCache";
@@ -108,16 +108,16 @@ namespace AssetStoreTools.Uploader
             return true;
         }
 
-        public static void CacheUploadSelections(string packageId, string versionId, JsonValue json)
+        public static void CacheUploadSelections(string packageId, JsonValue json)
         {
-            var fileName = $"{packageId}-{versionId}-uploadselection.asset";
+            var fileName = $"{packageId}-uploadselection.asset";
             CreateFileInPersistentCache(fileName, json.ToString(), true);
         }
 
-        public static bool GetCachedUploadSelections(string packageId, string versionId, out JsonValue json)
+        public static bool GetCachedUploadSelections(string packageId, out JsonValue json)
         {
             json = new JsonValue();
-            var path = Path.Combine(PersistentCachePath, $"{packageId}-{versionId}-uploadselection.asset");
+            var path = Path.Combine(PersistentCachePath, $"{packageId}-uploadselection.asset");
             if (!File.Exists(path))
                 return false;
 

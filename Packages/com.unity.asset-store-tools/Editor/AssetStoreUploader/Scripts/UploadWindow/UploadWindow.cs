@@ -94,7 +94,7 @@ namespace AssetStoreTools.Uploader
 
             AssetStoreAPI.AbortDownloadTasks();
             AssetStoreAPI.AbortUploadTasks();
-            PackageStorer.Reset();
+            PackageViewStorer.Reset();
 
             _allPackageView.ClearPackages();
             onLogout?.Invoke();

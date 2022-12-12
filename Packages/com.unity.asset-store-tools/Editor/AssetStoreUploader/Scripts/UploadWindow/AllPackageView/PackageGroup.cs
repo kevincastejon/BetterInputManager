@@ -8,7 +8,7 @@ namespace AssetStoreTools.Uploader
     {
         // Category Data
         private string GroupName { get; }
-        private readonly List<Package> _packages;
+        private readonly List<PackageView> _packages;
         
         // Visual Elements
         private Button _groupExpanderBox;
@@ -18,7 +18,7 @@ namespace AssetStoreTools.Uploader
         private Label _groupLabel;
         
         // Other
-        private Package _expandedPackage;
+        private PackageView _expandedPackageView;
         
         private bool _expanded;
         private bool? _expandingOverriden;
@@ -31,21 +31,21 @@ namespace AssetStoreTools.Uploader
             GroupName = groupName;
             AddToClassList("package-group");
             
-            _packages = new List<Package>();
+            _packages = new List<PackageView>();
             _expanded = createExpanded;
             
             SetupSingleGroupElement();
             HandleExpanding();
         }
 
-        public void AddPackage(Package package)
+        public void AddPackage(PackageView packageView)
         {
-            _packages.Add(package);
-            _groupContent.Add(package);
+            _packages.Add(packageView);
+            _groupContent.Add(packageView);
 
             UpdateGroupLabel();
-            package.OnPackageSelection = HandlePackageSelection;
-            package.ShowFunctions(false);
+            packageView.OnPackageSelection = HandlePackageSelection;
+            packageView.ShowFunctions(false);
         }
 
         public void SearchFilter(string filter)
@@ -112,7 +112,7 @@ namespace AssetStoreTools.Uploader
             if (GroupName.ToLower() != "draft")
             {
                 _groupLabel.SetEnabled(false);
-                _groupContent.SetEnabled(false);
+                _groupContent.AddToClassList("unity-disabled");
                 groupSeparator.style.display = DisplayStyle.Flex;
             }
 
@@ -141,29 +141,29 @@ namespace AssetStoreTools.Uploader
             _groupContent.style.display = displayStyle;
         }
 
-        private void HandlePackageSelection(Package package)
+        private void HandlePackageSelection(PackageView packageView)
         {
-            if (_expandedPackage == package)
+            if (_expandedPackageView == packageView)
             {
-                _expandedPackage = null;
+                _expandedPackageView = null;
                 return;
             }
 
-            if (_expandedPackage == null)
+            if (_expandedPackageView == null)
             {
-                _expandedPackage = package;
+                _expandedPackageView = packageView;
                 return;
             }
             
             // Always where it was
-            if (package.worldBound.y > _expandedPackage.worldBound.y)
+            if (packageView.worldBound.y > _expandedPackageView.worldBound.y)
             {
-                var sliderChangeDelta = -(_expandedPackage.worldBound.height - package.worldBound.height);
+                var sliderChangeDelta = -(_expandedPackageView.worldBound.height - packageView.worldBound.height);
                 OnSliderChange?.Invoke(sliderChangeDelta);
             }
             
-            _expandedPackage?.ShowFunctions(false);
-            _expandedPackage = package;
+            _expandedPackageView?.ShowFunctions(false);
+            _expandedPackageView = packageView;
             
         }
 

@@ -10,11 +10,19 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d813ff809ae82f643bf975031305d541, type: 3}
-  m_Name: 18_RemoveSpeedTreeAutomatedTest
+  m_Name: 16_RemoveSpeedTreeAutomatedTest
   m_EditorClassIdentifier: 
   HasBeenInitialized: 1
-  Id: 18
+  Id: 16
   Title: SpeedTree asset inclusion
   Description: You cannot redistribute SpeedTree files on other marketplaces. Please
     remove all SpeedTree files that are in this package.
-  TestMethodName: _18_RemoveSpeedTreeFiles
+  TestMethodName: _16_RemoveSpeedTreeFiles
+  ErrorCategory:
+    Filter: []
+    FilterIsInclusive: 0
+    AppliesToSubCategories: 1
+  WarningCategory:
+    Filter: []
+    FilterIsInclusive: 0
+    AppliesToSubCategories: 1

@@ -1,70 +1,32 @@
 ﻿using AssetStoreTools.Utility.Json;
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace AssetStoreTools.Uploader
 {
-    public class UnityPackageUploadWorkflowView : VisualElement
+    internal class UnityPackageUploadWorkflowView : UploadWorkflowView
     {
-        public const string SerializedName = "unitypackageWorkflow";
+        public const string WorkflowName = "UnitypackageWorkflow";
+        public const string WorkflowDisplayName = "Pre-exported .unitypackage";
 
-        private TextField _pathSelectionField;
-        
-        // Upload data
-        private string _selectedPackagePath;
-        private string _localPackageGuid;
-        private string _localPackagePath;
+        public override string Name => WorkflowName;
+        public override string DisplayName => WorkflowDisplayName;
 
-        private Action _serializeSelection;
-
-        private UnityPackageUploadWorkflowView(Action serializeSelection)
+        private UnityPackageUploadWorkflowView(Action serializeSelection) : base(serializeSelection)
         {
-            _serializeSelection = serializeSelection;
-            style.display = DisplayStyle.None;
-
             SetupWorkflow();
         }
 
         public static UnityPackageUploadWorkflowView Create(Action serializeAction)
         {
-            return Create(serializeAction, default(JsonValue));
+            return new UnityPackageUploadWorkflowView(serializeAction);
         }
 
-        public static UnityPackageUploadWorkflowView Create(Action serializeAction, JsonValue serializedValues)
-        {
-            try
-            {
-                var newInstance = new UnityPackageUploadWorkflowView(serializeAction);
-                if (!serializedValues.Equals(default(JsonValue)) && serializedValues.ContainsKey(SerializedName))
-                    newInstance.LoadSerializedWorkflow(serializedValues[SerializedName]);
-                return newInstance;
-            }
-            catch
-            {
-                ASDebug.LogError("Failed to load serialized values for a new .unitypackage Upload Workflow. Returning a default one");
-                return new UnityPackageUploadWorkflowView(serializeAction);
-            }
-        }
-
-        public string GetSelectedPackagePath()
-        {
-            return _selectedPackagePath;
-        }
-        
-        public string GetLocalPackageGuid()
-        {
-            return _localPackageGuid;
-        }
-
-        public string GetLocalPackagePath()
-        {
-            return _localPackagePath;
-        }
-        
-        private void SetupWorkflow()
+        protected sealed override void SetupWorkflow()
         {
             // Path selection
             VisualElement folderPathSelectionRow = new VisualElement();
@@ -82,63 +44,87 @@ namespace AssetStoreTools.Uploader
             labelHelpRow.Add(folderPathLabel);
             labelHelpRow.Add(folderPathLabelTooltip);
 
-            _pathSelectionField = new TextField();
-            _pathSelectionField.AddToClassList("path-selection-field");
-            _pathSelectionField.isReadOnly = true;
+            PathSelectionField = new TextField();
+            PathSelectionField.AddToClassList("path-selection-field");
+            PathSelectionField.isReadOnly = true;
             
             Button browsePathButton = new Button(BrowsePath) {name = "BrowsePathButton", text = "Browse"};
             browsePathButton.AddToClassList("browse-button");
             
             folderPathSelectionRow.Add(labelHelpRow);
-            folderPathSelectionRow.Add(_pathSelectionField);
+            folderPathSelectionRow.Add(PathSelectionField);
             folderPathSelectionRow.Add(browsePathButton);
             
             Add(folderPathSelectionRow);
         }
 
-        private void LoadSerializedWorkflow(JsonValue json)
+        public override void LoadSerializedWorkflow(JsonValue json, string lastUploadedPath, string lastUploadedGuid)
         {
-            var paths = json["paths"].AsList();
-
-            if (paths.Count == 0)
+            if (!DeserializeMainExportPath(json, out string mainPackagePath) || !File.Exists(mainPackagePath))
+            {
+                ASDebug.Log("Unable to restore .unitypackage upload workflow path from the local cache");
+                LoadSerializedWorkflowFallback(lastUploadedPath, lastUploadedGuid);
                 return;
+            }
 
-            _pathSelectionField.value = _selectedPackagePath = paths[0].IsString() ? paths[0].AsString() : null;
-
-            var localPackageGuid = json["localPackageGuid"];
-            var localPackagePath = json["localPackagePath"];
-            _localPackageGuid = localPackageGuid.IsString() ? localPackageGuid.AsString() : null;
-            _localPackagePath = localPackagePath.IsString() ? localPackagePath.AsString() : null;
-
-            ASDebug.Log($"Loaded serialized Unitypackage Flow value: {_selectedPackagePath}");
+            ASDebug.Log($"Restoring serialized .unitypackage workflow values from local cache");
+            HandleUnityPackageUploadPathSelection(mainPackagePath, false);
         }
 
-        private void BrowsePath()
+        public override void LoadSerializedWorkflowFallback(string lastUploadedPath, string lastUploadedGuid)
+        {
+            var packagePath = AssetDatabase.GUIDToAssetPath(lastUploadedGuid);
+            if (string.IsNullOrEmpty(packagePath))
+                packagePath = lastUploadedPath;
+
+            if (!packagePath.EndsWith(".unitypackage") || !File.Exists(packagePath))
+            {
+                ASDebug.Log("Unable to restore .unitypackage workflow path from previous upload values");
+                return;
+            }
+
+            ASDebug.Log($"Restoring serialized .unitypackage workflow values from previous upload values");
+            HandleUnityPackageUploadPathSelection(packagePath, false);
+        }
+
+        protected override void BrowsePath()
         {
             // Path retrieval
-            var relativeExportPath = string.Empty;
-            
             var rootProjectPath = Application.dataPath.Substring(0, Application.dataPath.Length - "Assets".Length);
             var absolutePackagePath = EditorUtility.OpenFilePanel("Select a .unitypackage file", rootProjectPath, "unitypackage");
-            
+
             if (string.IsNullOrEmpty(absolutePackagePath))
                 return;
-            
+
+            var relativeExportPath = string.Empty;
             if (absolutePackagePath.StartsWith(rootProjectPath))
                 relativeExportPath = absolutePackagePath.Substring(rootProjectPath.Length);
-            
-            // Main upload path
             var selectedPackagePath = !string.IsNullOrEmpty(relativeExportPath) ? relativeExportPath : absolutePackagePath;
-            _pathSelectionField.value = selectedPackagePath;
-            
+
+            HandleUnityPackageUploadPathSelection(selectedPackagePath, true);
+        }
+
+        private void HandleUnityPackageUploadPathSelection(string selectedPackagePath, bool serializeValues)
+        {
+            // Main upload path
+            PathSelectionField.value = selectedPackagePath;
+
             // Export data
-            _selectedPackagePath = selectedPackagePath;
-            
-            // TODO: Make sure this actually works 
-            _localPackageGuid = string.Empty;
-            _localPackagePath = string.Empty;
-            _serializeSelection?.Invoke();
-            
+            MainExportPath = selectedPackagePath;
+
+            LocalPackageGuid = string.Empty;
+            LocalPackagePath = string.Empty;
+            LocalProjectPath = selectedPackagePath;
+
+            if (serializeValues)
+                SerializeSelection?.Invoke();
+        }
+
+        public override Task<PackageExporter.ExportResult> ExportPackage(string __, bool _)
+        {
+            if (string.IsNullOrEmpty(MainExportPath))
+                return Task.FromResult(new PackageExporter.ExportResult() { Success = false, Error = ASError.GetGenericError(new ArgumentException("Package export path is empty or null")) });
+            return Task.FromResult(new PackageExporter.ExportResult() { Success = true, ExportedPath = MainExportPath });
         }
     }
 }

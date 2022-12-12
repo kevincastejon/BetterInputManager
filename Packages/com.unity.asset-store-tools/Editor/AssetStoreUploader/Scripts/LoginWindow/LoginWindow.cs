@@ -6,7 +6,7 @@ using UnityEngine.UIElements;
 
 namespace AssetStoreTools.Uploader
 {
-    public class LoginWindow : VisualElement
+    internal class LoginWindow : VisualElement
     {
         private readonly string REGISTER_URL = "https://publisher.unity.com/access";
         private readonly string FORGOT_PASSWORD_URL = "https://id.unity.com/password/new";
@@ -43,23 +43,33 @@ namespace AssetStoreTools.Uploader
             _cloudLoginLabel.text = "Cloud login unavailable.";
             _cloudLoginButton.SetEnabled(false);
 
-            _cloudLoginButton.clicked += () =>
+            _cloudLoginButton.clicked += async () =>
             {
                 EnableErrorBox(false);
                 this.SetEnabled(false);
-                AssetStoreAPI.LoginWithToken(CloudProjectSettings.accessToken, onSuccess, onFail);
+                var result = await AssetStoreAPI.LoginWithTokenAsync(CloudProjectSettings.accessToken);
+                if (result.Success)
+                    onSuccess(result.Response);
+                else
+                    onFail(result.Error);
             };
 
             // Normal login
-            _credentialsLoginButton.clicked += () =>
+            _credentialsLoginButton.clicked += async () =>
             {
                 EnableErrorBox(false);
                 
                 var validatedFields = ValidateLoginFields(_emailField.text, _passwordField.value);
                 this.SetEnabled(!validatedFields);
 
-                if (validatedFields) 
-                    AssetStoreAPI.Login(_emailField.text, _passwordField.value, onSuccess, onFail);
+                if (validatedFields)
+                {
+                    var result = await AssetStoreAPI.LoginWithCredentialsAsync(_emailField.text, _passwordField.text);
+                    if (result.Success)
+                        onSuccess(result.Response);
+                    else
+                        onFail(result.Error);
+                }
             };
         }
 

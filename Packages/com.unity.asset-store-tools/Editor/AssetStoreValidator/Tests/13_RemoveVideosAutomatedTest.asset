@@ -10,12 +10,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d813ff809ae82f643bf975031305d541, type: 3}
-  m_Name: 14_RemoveVideosAutomatedTest
+  m_Name: 13_RemoveVideosAutomatedTest
   m_EditorClassIdentifier: 
   HasBeenInitialized: 1
-  Id: 14
+  Id: 13
   Title: Video file inclusion
   Description: You cannot include a video file in your package. Please upload your
     video file to an online video hosting website (Youtube, Vimeo, etc.) and include
     the link to the video in your written documentation.
-  TestMethodName: _14_RemoveVideoFiles
+  TestMethodName: _13_RemoveVideoFiles
+  ErrorCategory:
+    Filter: []
+    FilterIsInclusive: 1
+    AppliesToSubCategories: 1
+  WarningCategory:
+    Filter: []
+    FilterIsInclusive: 0
+    AppliesToSubCategories: 1
